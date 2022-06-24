@@ -1,0 +1,87 @@
+"""
+Get the arpabet pronunciation of a set of words, courtesy
+of the CMU Sphinx pronunciation dictionary (and their 
+tools to determine the pronunciation of unknown words).
+
+Usage: create a pronounce object, add words to pronounce object
+       run .p()
+       
+Command line: python pronunciation.py list of words to pronounce
+
+Copyright 2013 - Steven Rubin - srubin@cs.berkeley.edu
+MIT License
+"""
+
+import requests
+import sys
+import re
+import string
+
+import unidecode
+import word_phone
+
+class Pronounce(object):
+    url = "http://www.speech.cs.cmu.edu/cgi-bin/tools/logios/lextool.pl"
+    dict_re = re.compile(r"http://.*\d+\.dict")
+    other_pr = re.compile(r"(.*)\(\d+\)$")
+    vowel_re = re.compile(r"AA|AE|AH|AO|AW|AY|EH|ER|EY|IH|IY|OW|OY|UH|UW")
+
+    def __init__(self, words=None):
+        if words:
+            self.words = words
+        else:
+            self.words = []
+
+    def add(self, word):
+        self.words.append(word)
+
+    def p(self, add_fake_stress=False):
+        w_upper = [str(w).upper() for w in self.words]
+        w_lower = [str(w).lower() for w in self.words]
+
+        punc_map = dict((ord(c), None) for c in string.punctuation)
+        w_nopunc = [s.translate(punc_map) for s in w_upper]
+        #w_nopunc = [s.translate(punc_map) for s in w_lower]
+        
+        wordfile = {'wordfile': ('words.txt', " ".join(w_nopunc))}
+
+        #res = requests.post(Pronounce.url,
+        #                    data={"formtype": "simple"},
+        #                    files=wordfile, allow_redirects=True)
+        #base_url = res.url
+        #text = res.text
+        #dict_path = Pronounce.dict_re.search(text).group(0)
+        #res = requests.get(dict_path)
+        
+        # generate output dict
+        pronunciations = {}
+        for line in w_nopunc: #res.text.split('\n'):
+            print(line)
+            strip_word = re.sub(r'[^\w\s\']', '', unidecode.unidecode(line))
+            print("UPDATED: ", strip_word)
+            phones = ' '.join(word_phone.wordbreak(strip_word.lower())[0])
+            phones = re.sub('\d', '', phones)
+            print(phones)
+            line += "\t" + phones
+            if len(line) > 0:
+                pr = line.split('\t')
+                match = Pronounce.other_pr.match(pr[0])
+                if match:
+                    pr[0] = match.group(1)
+                print("HELP", pr[0], pr[1], w_nopunc)
+                idx = w_nopunc.index(pr[0])
+                orig = self.words[idx]
+                upword = w_upper[idx]
+                if add_fake_stress:
+                    pr[1] = re.sub(Pronounce.vowel_re, r"\g<0>0", pr[1])
+                
+                if orig in pronunciations:
+                    pronunciations[orig].append(pr[1])
+                else:
+                    pronunciations[orig] = [upword, pr[1]]
+
+        return pronunciations
+
+if __name__ == '__main__':
+    pr = Pronounce(sys.argv[1:])
+    print(pr.p())
